@@ -2,8 +2,9 @@
  reagrdless of channel number, polarity, ppm frame length, etc...
  You can even change these while scanning!*/
 #include "ZumoMotors.h"
+#include <Pixy2.h>
 
-
+Pixy2 pixy;
 ZumoMotors motors;
 
 #define PPM_Pin 5  //this must be 2 or 3 on older Arduinos. On Uno Wifi Rev2 It can be any pin.
@@ -28,7 +29,7 @@ const int TOLERANCEPULSEM = 13;
 #define ROLL 1   // is Roll 1900 is left
 #define PITCH 2  // is PITCH 1900 is Forward
 #define YAW 3    // is YAW 1900 is left
-#define MODES 4  // is Flight modes, 1900 is 0, 1500 is 1, 1100 is 2
+#define MODE 4  // is Flight modes, 1900 is 0, 1500 is 1, 1100 is 2
 #define FLAPS 5  // is Flaps, 1900 is 0, 1500 is 1, 1100 is 2
 #define NOTUSED 6 // is
 #define AUX 7    // is Aux
@@ -61,8 +62,7 @@ void setup()
   motors.flipLeftMotor(true);
   motors.flipRightMotor(true);
 
-
-
+  pixy.init();
 }
 
 void loop()
@@ -81,8 +81,32 @@ void loop()
   int leftThrustValue = ppm[THRUST] - MIDPULSE;
   int rightThrustValue = leftThrustValue;
   bool disarmed = false;
+
+  static int mode = 0;
+  static int modeOld = 0;
+
+  if (isWithinZeroTolerance(ppm[MODE] - MAXPULSE)) {
+    disarmed = true;
+    mode = 0;
+  } else if (isWithinZeroTolerance(ppm[MODE] - MIDPULSE)) { 
+     //armed, no extra action here
+     mode = 1;
+  } else if (isWithinZeroTolerance(ppm[MODE] - MINPULSE)) { 
+    // mode = 2 color conneected components
+    mode = 2;
+  }
+
+  if (modeOld != mode) {
+    //state changes here
+    if (mode == 2) {
+      pixy.changeProg("color_connected_components");
+    } else {
+      pixy.changeProg("video");
+    }
+  }
   
-  if (isWithinMidTolerance(ppm[THRUST]) && isWithinMidTolerance(ppm[YAW])) {
+  
+  if (!disarmed && isWithinMidTolerance(ppm[THRUST]) && isWithinMidTolerance(ppm[YAW])) {
     //Serial.print("STOPPED ");
     leftThrustValue = 0;
     rightThrustValue = 0;
@@ -128,6 +152,7 @@ void loop()
   
   //delay(500);  //you can even use delays!!!
   state = !state;
+  modeOld = mode;
 }
 
 void read_ppm(){  //leave this alone
@@ -187,6 +212,8 @@ bool isWithinMidTolerance(int reading) {
   return true;
 }
 
+// Use this to send in a reading minus MID, MAX or MIN for Modes for example.
+//Tests to see if the 'reading' is around 0 plus or minus the TOLERANCE amount.
 bool isWithinZeroTolerance(int reading) {
   //MIDPULSE
   //TOLERANCEPULSEM
