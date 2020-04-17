@@ -1,6 +1,7 @@
 /*This program puts the servo values into an array,
  reagrdless of channel number, polarity, ppm frame length, etc...
  You can even change these while scanning!*/
+ 
 #include "ZumoMotors.h"
 #include <Pixy2.h>
 
@@ -9,16 +10,17 @@ ZumoMotors motors;
 
 #define PPM_Pin 5  //this must be 2 or 3 on older Arduinos. On Uno Wifi Rev2 It can be any pin.
 volatile int ppm[16];  //array for storing up to 16 servo signals
-byte servo[] = {1,4,5,6,7,8,9,10};  //pin number of servo output
-//#define servoOut  //comment this if you don't want servo output, it also appears to dead lock the program.
-//#define DEBUG
+
 byte state = HIGH;
 int waitingForSyncCount = 0;
 
+//Pixy Cam Servo pan and tilt.
+int panValue = 500;
+int tiltValue = 500;
+unsigned long lastMicrosCount = 0;
+
 // We skip readings near the end of Micros, and reset to waiting for Sync.
 #define SKIPREADINGS 4294967295 - 4000
-
-//extern unsigned long timer0_overflow_count;
 
 const int MAXPULSE = 1900;
 const int MINPULSE = 1100;
@@ -33,7 +35,7 @@ const int TOLERANCEPULSEM = 13;
 #define FLAPS 5  // is Flaps, 1900 is 0, 1500 is 1, 1100 is 2
 #define NOTUSED 6 // is
 #define AUX 7    // is Aux
-  
+
 
 void setup()
 {
@@ -59,10 +61,12 @@ void setup()
 
   pinMode(LED_BUILTIN, OUTPUT);
 
+ //reverse both motors.
   motors.flipLeftMotor(true);
   motors.flipRightMotor(true);
 
   pixy.init();
+  pixy.changeProg("video");
 }
 
 void loop()
@@ -96,6 +100,8 @@ void loop()
     mode = 2;
   }
 
+  static uint8_t lampToggle = 0;
+  
   if (modeOld != mode) {
     //state changes here
     if (mode == 2) {
@@ -103,7 +109,17 @@ void loop()
     } else {
       pixy.changeProg("video");
     }
-  }
+
+    if (mode == 1) {
+        if (lampToggle == 0) {
+          lampToggle = 1;
+        } else {
+          lampToggle = 0;
+        }
+        
+      pixy.setLamp(lampToggle, lampToggle);
+    }
+  } // if modeOld != mode
   
   
   if (!disarmed && isWithinMidTolerance(ppm[THRUST]) && isWithinMidTolerance(ppm[YAW])) {
@@ -112,6 +128,9 @@ void loop()
     rightThrustValue = 0;
   } else if (ppm[THRUST] < 1000) {
     //Serial.println("DISARMED ");
+    panValue = 500;
+    tiltValue = 500;
+    pixy.setServos(panValue, tiltValue);
     disarmed = true;
     rightThrustValue = 0;
     leftThrustValue = 0;
@@ -123,36 +142,64 @@ void loop()
 //  }
 
   if (!disarmed) {
+    //get the centered Yaw of 0. Midpulse is 1500 or so.
     int yawValue = ppm[YAW] - MIDPULSE;
+
+    //apply tolerence to it.
     if (isWithinMidTolerance(ppm[YAW])) {
-      //Serial.println(" ");
+      //do nothing
     } else if (yawValue > 0) {
       //scale left and right motor speeds
       leftThrustValue -= yawValue;
       rightThrustValue += yawValue;
-      //Serial.print(" + Rotate Left ");
     } else if (yawValue < 0) {
-      //Serial.print(" + Rotate Right ");
       leftThrustValue -= yawValue;
       rightThrustValue += yawValue;
     }
-  }
 
-//  Serial.print(leftThrustValue);
-//  Serial.print("  ");
-//  Serial.println(rightThrustValue);
+    unsigned long microCount = micros();
+    unsigned long counterMs = microCount - lastMicrosCount;
+
+    if (counterMs > 3000) {
+      lastMicrosCount = microCount;
+      if (!isWithinMidTolerance(ppm[PITCH])) {
+         int pitch = (ppm[PITCH] - 1500) / 30;
+
+         tiltValue += pitch;
+         limitValueTo1K(&tiltValue);
+         pixy.setServos(panValue, tiltValue);
+      } 
+      
+      if (!isWithinMidTolerance(ppm[ROLL])) {
+        int pan = (ppm[ROLL] - 1500) / 30;
+        panValue += pan;
+        limitValueTo1K(&panValue);
+        pixy.setServos(panValue, tiltValue);
+      }
+
+      Serial.print(tiltValue);
+      Serial.print("\t");
+      Serial.println(panValue);
+    }// if (counterMs > 35)
+  } // if !disarmed
+
+
   if (isWithinZeroTolerance(leftThrustValue) && isWithinZeroTolerance(rightThrustValue)) {
     motors.setSpeeds(0, 0);
   } else {
     motors.setSpeeds(leftThrustValue, rightThrustValue);
   }
   
-  //Serial.print("  Sync:");
-  //Serial.println(waitingForSyncCount);
-  
-  //delay(500);  //you can even use delays!!!
   state = !state;
   modeOld = mode;
+}
+
+void limitValueTo1K(int *inValue) {
+  if (*inValue < 0) { 
+    *inValue = 0;
+  } else if (*inValue > 1000) {
+    *inValue = 1000;
+  }
 }
 
 void read_ppm(){  //leave this alone
