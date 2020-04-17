@@ -13,6 +13,7 @@ volatile int ppm[16];  //array for storing up to 16 servo signals
 
 byte state = HIGH;
 int waitingForSyncCount = 0;
+volatile bool readingAvailable = false;
 
 //Pixy Cam Servo pan and tilt.
 int panValue = 500;
@@ -71,6 +72,11 @@ void setup()
 
 void loop()
 {
+
+  if (readingAvailable) {
+    readingAvailable = false;
+  }
+
   digitalWrite(LED_BUILTIN, state);
 
   #if defined(DEBUG)
@@ -214,6 +220,7 @@ void read_ppm(){  //leave this alone
     waitingForSyncCount += 1;
     channel = -1; //wait for sync mode
     last_micros = microCount;
+    readingAvailable = false;
     return;
   }
 
@@ -221,7 +228,9 @@ void read_ppm(){  //leave this alone
   // also wait till we are out of waiting for sync mode
   if(counterMs > 2100 || channel == -1) {
     channel = 0;
-
+    
+    readingAvailable = true;
+    
     #if defined(DEBUG)
     Serial.print("PPM Frame Len: ");
     Serial.println(microCount - last_micros);
