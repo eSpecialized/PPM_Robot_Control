@@ -37,6 +37,14 @@ const int TOLERANCEPULSEM = 13;
 #define NOTUSED 6 // is
 #define AUX 7    // is Aux
 
+//default values.
+ppm[THRUST] = 1500;
+ppm[ROLL] = 1500;
+ppm[PITCH] = 1500;
+ppm[YAW] = 1500;
+ppm[MODE] = 1900;
+ppm[FLAPS] = 1900;
+ppm[AUX] = 1500;
 
 void setup()
 {
@@ -72,10 +80,12 @@ void setup()
 
 void loop()
 {
-
-  if (readingAvailable) {
-    readingAvailable = false;
+  //TODO: Test this
+  if (!readingAvailable) {
+    return;
   }
+
+  readingAvailable = false;
 
   digitalWrite(LED_BUILTIN, state);
 
